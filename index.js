@@ -1,55 +1,39 @@
 const express = require("express");
-const swisseph = require("swisseph");
-const path = require("path");
+const { exec } = require("child_process");
 
 const app = express();
-app.use(express.json());
-
-// Configura o caminho da lib e dos arquivos ephemeris
-swisseph.swe_set_ephe_path(path.join(__dirname, "ephe"));
 
 app.get("/", (req, res) => {
-  res.send("API de Efemérides Suíças rodando via Render!");
+  res.send("Swiss Ephemeris funcionando! (modo swetest)");
 });
 
-app.get("/ephemeris", (req, res) => {
-  try {
-    const { year, month, day, hour, lat, lon } = req.query;
+app.get("/sun", (req, res) => {
+  const { year, month, day, hour } = req.query;
 
-    if (!year || !month || !day || !hour || !lat || !lon) {
-      return res.status(400).json({
-        error: "Parâmetros ausentes. Envie year, month, day, hour, lat, lon."
-      });
-    }
-
-    const julday = swisseph.swe_julday(
-      parseInt(year),
-      parseInt(month),
-      parseInt(day),
-      parseFloat(hour),
-      swisseph.SE_GREG_CAL
-    );
-
-    const flags = swisseph.SEFLG_SWIEPH;
-
-    swisseph.swe_calc_ut(julday, swisseph.SE_SUN, flags, (body) => {
-      res.json({
-        julday,
-        sun: {
-          longitude: body.longitude,
-          latitude: body.latitude,
-          distance: body.distance
-        }
-      });
+  if (!year || !month || !day || !hour) {
+    return res.json({
+      error: "Envie year, month, day, hour"
     });
-
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Erro interno." });
   }
+
+  const datetime = `${year}.${month}.${day}`;
+  const cmd = `swetest -b${datetime} -ut${hour} -p0 -head`;
+
+  exec(cmd, (err, stdout) => {
+    if (err) return res.json({ error: err });
+
+    const parts = stdout.trim().split(/\s+/);
+
+    res.json({
+      planet: "Sun",
+      longitude: parts[1],
+      latitude: parts[2],
+      distance: parts[3]
+    });
+  });
 });
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log("Servidor rodando na porta " + port);
+  console.log("Rodando na porta " + port);
 });
