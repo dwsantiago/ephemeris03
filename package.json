@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "swisseph": "^2.9.3",
+    "swisseph": "^2.10.0",
     "morgan": "^1.10.0"
   }
 }
