@@ -2,22 +2,24 @@ FROM node:18
 
 WORKDIR /app
 
-# 1. Instalação de dependências
-# ADICIONEI: 'git' (para baixar o codigo) e 'zlib1g-dev' (CRUCIAL para compilar sem erro)
+# 1. Instala dependências (Mantendo o zlib1g-dev que é CRUCIAL)
 RUN apt-get update && apt-get install -y \
     build-essential wget unzip python3 git zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Baixa o código fonte via GIT e compila
-# Usar git clone --depth 1 é mais rápido e garante que a pasta será /tmp/swe
+# 2. Baixa e Compila (Lógica Inteligente de Diretório)
 RUN git clone --depth 1 https://github.com/aloistr/swisseph.git /tmp/swe \
-    && cd /tmp/swe/src \
+    && cd /tmp/swe \
+    # [TRUQUE] Se existir pasta 'src', entra nela. Se não, assume que está na raiz.
+    && if [ -d "src" ]; then cd src; fi \
     && make libswe.so \
     && mkdir -p /usr/local/lib \
     && cp libswe.so /usr/local/lib/ \
     && ldconfig \
+    # [TRUQUE] Volta para a raiz do repo para pegar os arquivos de dados (ephe)
+    && cd /tmp/swe \
     && mkdir -p /usr/local/share/ephe \
-    && cp -r /tmp/swe/ephe/* /usr/local/share/ephe/
+    && if [ -d "ephe" ]; then cp -r ephe/* /usr/local/share/ephe/; fi
 
 # 3. Instala dependências do Node
 COPY package*.json ./
