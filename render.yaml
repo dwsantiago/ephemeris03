@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: swiss-ephem-api
+    env: docker
+    plan: free
+    autoDeploy: true
