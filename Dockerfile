@@ -2,12 +2,13 @@ FROM node:18
 
 WORKDIR /app
 
-# Instala ferramentas de build e Python3 (necessário para ffi-napi/node-gyp)
+# 1. Instala Python e ferramentas de build (Necessário para o ffi-napi)
 RUN apt-get update && apt-get install -y \
     build-essential wget unzip python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# Baixa e compila a Swiss Ephemeris (libswe)
+# 2. Baixa do site oficial e compila a BIBLIOTECA (libswe.so)
+# Nota: Usamos o link oficial ftp/swisseph para garantir a pasta 'swe/src'
 RUN wget https://www.astro.com/ftp/swisseph/swe_unix_src_2.10.03.tar.gz -O /tmp/swe.tar.gz \
     && tar -xzf /tmp/swe.tar.gz -C /tmp \
     && cd /tmp/swe/src \
@@ -18,11 +19,11 @@ RUN wget https://www.astro.com/ftp/swisseph/swe_unix_src_2.10.03.tar.gz -O /tmp/
     && mkdir -p /usr/local/share/ephe \
     && cp -r /tmp/swe/ephe/* /usr/local/share/ephe/
 
-# Copia package.json e instala dependências
+# 3. Instala dependências do Node
 COPY package*.json ./
 RUN npm install --omit=dev
 
-# Copia o restante do código
+# 4. Copia o código da API
 COPY . .
 
 ENV PORT=3000
