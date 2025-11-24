@@ -2,16 +2,15 @@ FROM node:18
 
 WORKDIR /app
 
-# 1. Instala Python e ferramentas de build (Essencial para ffi-napi)
+# 1. Instalação de dependências
+# ADICIONEI: 'git' (para baixar o codigo) e 'zlib1g-dev' (CRUCIAL para compilar sem erro)
 RUN apt-get update && apt-get install -y \
-    build-essential wget unzip python3 \
+    build-essential wget unzip python3 git zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Baixa do GITHUB (Estável) e compila a libswe.so
-# TRUQUE: --strip-components=1 força os arquivos a irem para /tmp/swe sem criar subpastas com nomes estranhos
-RUN mkdir -p /tmp/swe \
-    && wget https://github.com/aloistr/swisseph/archive/refs/tags/v2.10.03.tar.gz -O /tmp/swe.tar.gz \
-    && tar -xzf /tmp/swe.tar.gz -C /tmp/swe --strip-components=1 \
+# 2. Baixa o código fonte via GIT e compila
+# Usar git clone --depth 1 é mais rápido e garante que a pasta será /tmp/swe
+RUN git clone --depth 1 https://github.com/aloistr/swisseph.git /tmp/swe \
     && cd /tmp/swe/src \
     && make libswe.so \
     && mkdir -p /usr/local/lib \
