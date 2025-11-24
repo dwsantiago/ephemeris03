@@ -1,29 +1,31 @@
 const express = require("express");
-const ffi = require("ffi-napi");
-const ref = require("ref-napi");
+const koffi = require("koffi");
 
 const app = express();
 app.use(express.json());
 
-// Definição da interface com a lib C (libswe)
-const sweLib = ffi.Library("libswe", {
-  // Define o caminho dos arquivos de efemérides
-  swe_set_ephe_path: ["void", ["string"]],
-  
-  // Calcula Dia Juliano: (ano, mes, dia, hora, flag_gregoriano) -> double
-  swe_julday: ["double", ["int", "int", "int", "double", "int"]],
-  
-  // Calcula posições: (jd, planeta_id, flags, array_resultado, string_erro) -> int (flags reais)
-  // Nota: Mudei para 'pointer' para termos controle total do buffer de memória
-  swe_calc_ut: ["int", ["double", "int", "int", "pointer", "pointer"]],
-});
+// 1. Carrega a biblioteca compilada
+// O Dockerfile coloca ela em /usr/local/lib
+const libPath = "/usr/local/lib/libswe.so";
+const lib = koffi.load(libPath);
 
-// Configura o caminho que definimos no Dockerfile
+// 2. Define as funções C
+// swe_julday: Retorna double, recebe ints e double
+const swe_julday = lib.func('double swe_julday(int year, int month, int day, double hour, int flag)');
+
+// swe_set_ephe_path: Retorna void, recebe string
+const swe_set_ephe_path = lib.func('void swe_set_ephe_path(const char *path)');
+
+// swe_calc_ut: Retorna int (flags), recebe double, int, int, ponteiro de resultado, ponteiro de erro
+// _Out_ indica para o Koffi que esses ponteiros serão escritos pela função C
+const swe_calc_ut = lib.func('int swe_calc_ut(double jd, int ipl, int iflag, _Out_ double *xx, _Out_ char *serr)');
+
+// Configura o caminho das efemérides (igual antes)
 const SEPH_PATH = "/usr/local/share/ephe";
-sweLib.swe_set_ephe_path(SEPH_PATH);
+swe_set_ephe_path(SEPH_PATH);
 
 app.get("/", (req, res) => {
-  res.send("Swiss Ephemeris API online ✓ - Escorpião no comando ♏");
+  res.send("Swiss Ephemeris API online ✓ (Powered by Koffi ☕)");
 });
 
 app.get("/positions", (req, res) => {
@@ -34,49 +36,44 @@ app.get("/positions", (req, res) => {
         return res.status(400).json({ error: "Faltam parâmetros. Use: year, month, day, hour, id" });
     }
 
-    // Calcula o Dia Juliano
-    const jd = sweLib.swe_julday(
+    // Calcula Dia Juliano
+    const jd = swe_julday(
       parseInt(year),
       parseInt(month),
       parseInt(day),
       parseFloat(hour),
-      1 // 1 = Calendário Gregoriano
+      1 // SE_GREG_CAL
     );
 
-    // Flags para o cálculo:
-    // 2 (SEFLG_SWIEPH) = Usa efemérides suíças (precisão máxima)
-    // 256 (SEFLG_SPEED) = Calcula velocidade também
+    // Flags: Speed (256) + SwissEph (2)
     const iflag = 256 | 2; 
 
-    // Aloca buffers de memória
-    // resultBuffer: Array de 6 doubles (6 * 8 bytes = 48 bytes)
-    // Índices: 0=Lon, 1=Lat, 2=Dist, 3=VelLon, 4=VelLat, 5=VelDist
-    const resultBuffer = Buffer.alloc(48);
-    const serrBuffer = Buffer.alloc(256); // Buffer para mensagem de erro
+    // Aloca memória para os resultados
+    // array de 6 doubles (lon, lat, dist, speed_lon, speed_lat, speed_dist)
+    const resultBuffer = new Float64Array(6); 
+    // buffer de erro (256 bytes)
+    const errorBuffer = Buffer.alloc(256);
 
-    // Chama a função C
-    const retFlag = sweLib.swe_calc_ut(jd, parseInt(id), iflag, resultBuffer, serrBuffer);
+    // Chama a função
+    const retFlag = swe_calc_ut(jd, parseInt(id), iflag, resultBuffer, errorBuffer);
 
     if (retFlag < 0) {
-        // Se retornou negativo, deu erro na lib
-        const errorMsg = ref.readCString(serrBuffer, 0);
+        // Lê a string de erro do buffer C
+        // Koffi decode lê até o null terminator
+        const errorMsg = koffi.decode(errorBuffer, "char", 256);
         return res.status(500).json({ error: "Erro na Swiss Ephemeris", details: errorMsg });
     }
-
-    // Lê os dados do buffer (Node usa Little Endian por padrão em x64)
-    const longitude = resultBuffer.readDoubleLE(0);
-    const latitude = resultBuffer.readDoubleLE(8);
-    const distance = resultBuffer.readDoubleLE(16);
-    const speed = resultBuffer.readDoubleLE(24);
 
     res.json({
       jd,
       target_id: parseInt(id),
       data: {
-        lon: longitude,
-        lat: latitude,
-        dist: distance,
-        speed: speed // Velocidade diária em graus
+        lon: resultBuffer[0],
+        lat: resultBuffer[1],
+        dist: resultBuffer[2],
+        speed_lon: resultBuffer[3],
+        speed_lat: resultBuffer[4],
+        speed_dist: resultBuffer[5]
       }
     });
 
