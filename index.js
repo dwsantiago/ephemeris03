@@ -5,11 +5,12 @@ const app = express();
 app.use(express.json());
 
 // 1. Carrega a biblioteca compilada
-// O Dockerfile coloca ela em /usr/local/lib
+// O Dockerfile coloca ela em /usr/local/lib, onde o Linux espera
 const libPath = "/usr/local/lib/libswe.so";
 const lib = koffi.load(libPath);
 
-// 2. Define as funções C
+// 2. Define as funções C (Mapeamento direto)
+
 // swe_julday: Retorna double, recebe ints e double
 const swe_julday = lib.func('double swe_julday(int year, int month, int day, double hour, int flag)');
 
