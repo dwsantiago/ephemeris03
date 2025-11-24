@@ -1,13 +1,11 @@
 {
   "name": "ephemeris-api",
   "version": "1.0.0",
-  "description": "API de cálculo astrológico usando Swiss Ephemeris",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
-    "swisseph": "^2.10.3"
+    "express": "^4.18.2"
   }
 }
