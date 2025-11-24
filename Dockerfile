@@ -1,22 +1,31 @@
-FROM node:18-slim
-
-RUN apt-get update && apt-get install -y \
-    wget \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN wget https://github.com/aloistr/swisseph/archive/refs/tags/v2.10.03.tar.gz -O /tmp/swe.tar.gz && \
-    tar -xzf /tmp/swe.tar.gz -C /tmp && \
-    cd /tmp/swisseph-2.10.03/src && \
-    make -j4 swetest && \
-    cp swetest /usr/local/bin/ && \
-    mkdir -p /usr/local/share/ephe && \
-    cp -r /tmp/swisseph-2.10.03/ephe/* /usr/local/share/ephe/
+FROM node:18
 
 WORKDIR /app
+
+# Instala ferramentas de build e Python3 (necessário para ffi-napi/node-gyp)
+RUN apt-get update && apt-get install -y \
+    build-essential wget unzip python3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Baixa e compila a Swiss Ephemeris (libswe)
+RUN wget https://www.astro.com/ftp/swisseph/swe_unix_src_2.10.03.tar.gz -O /tmp/swe.tar.gz \
+    && tar -xzf /tmp/swe.tar.gz -C /tmp \
+    && cd /tmp/swe/src \
+    && make libswe.so \
+    && mkdir -p /usr/local/lib \
+    && cp libswe.so /usr/local/lib/ \
+    && ldconfig \
+    && mkdir -p /usr/local/share/ephe \
+    && cp -r /tmp/swe/ephe/* /usr/local/share/ephe/
+
+# Copia package.json e instala dependências
+COPY package*.json ./
+RUN npm install --omit=dev
+
+# Copia o restante do código
 COPY . .
 
-RUN npm install
-
+ENV PORT=3000
 EXPOSE 3000
-CMD ["npm", "start"]
+
+CMD ["node", "index.js"]
