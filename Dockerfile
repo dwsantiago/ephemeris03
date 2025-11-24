@@ -10,7 +10,6 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Baixa e compila o Swiss Ephemeris CLI (swetest)
 RUN wget https://www.astro.com/ftp/swisseph/swe_unix_src_2.10.03.tar.gz -O /tmp/swe.tar.gz && \
     tar -xzf /tmp/swe.tar.gz -C /tmp && \
     cd /tmp/swe/src && \
@@ -24,8 +23,5 @@ RUN npm install --omit=dev
 
 COPY . .
 
-ENV PORT=3000
-
 EXPOSE 3000
-
 CMD ["node", "index.js"]
