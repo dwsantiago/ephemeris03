@@ -1,54 +1,55 @@
 const express = require("express");
-const ffi = require("ffi-napi");
-const ref = require("ref-napi");
+const swisseph = require("swisseph");
 const path = require("path");
 
 const app = express();
 app.use(express.json());
 
-const sweLib = ffi.Library("libswe", {
-  swe_set_ephe_path: ["void", ["string"]],
-  swe_julday: ["double", ["int", "int", "int", "double", "int"]],
-  swe_calc_ut: ["int", ["double", "int", "double*", "char*", "int"]],
-});
-
-const SEPH_PATH = "/usr/local/share/ephe";
-sweLib.swe_set_ephe_path(SEPH_PATH);
+// Configura o caminho da lib e dos arquivos ephemeris
+swisseph.swe_set_ephe_path(path.join(__dirname, "ephe"));
 
 app.get("/", (req, res) => {
-  res.send("Swiss Ephemeris API online ✓");
+  res.send("API de Efemérides Suíças rodando via Render!");
 });
 
-app.get("/positions", (req, res) => {
+app.get("/ephemeris", (req, res) => {
   try {
-    const { year, month, day, hour, id } = req.query;
-    const jd = sweLib.swe_julday(
+    const { year, month, day, hour, lat, lon } = req.query;
+
+    if (!year || !month || !day || !hour || !lat || !lon) {
+      return res.status(400).json({
+        error: "Parâmetros ausentes. Envie year, month, day, hour, lat, lon."
+      });
+    }
+
+    const julday = swisseph.swe_julday(
       parseInt(year),
       parseInt(month),
       parseInt(day),
       parseFloat(hour),
-      1
+      swisseph.SE_GREG_CAL
     );
 
-    const result = new Float64Array(6);
-    const serr = Buffer.alloc(256);
+    const flags = swisseph.SEFLG_SWIEPH;
 
-    sweLib.swe_calc_ut(jd, parseInt(id), result, serr, 256);
-
-    res.json({
-      jd,
-      data: {
-        lon: result[0],
-        lat: result[1],
-        dist: result[2],
-      },
-      error: serr.toString().trim(),
+    swisseph.swe_calc_ut(julday, swisseph.SE_SUN, flags, (body) => {
+      res.json({
+        julday,
+        sun: {
+          longitude: body.longitude,
+          latitude: body.latitude,
+          distance: body.distance
+        }
+      });
     });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Erro interno." });
   }
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("API rodando na porta", process.env.PORT || 3000);
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log("Servidor rodando na porta " + port);
 });
