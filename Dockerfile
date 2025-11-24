@@ -2,15 +2,16 @@ FROM node:18
 
 WORKDIR /app
 
-# 1. Instala Python e ferramentas de build (Necessário para o ffi-napi)
+# 1. Instala Python e ferramentas de build (Essencial para ffi-napi)
 RUN apt-get update && apt-get install -y \
     build-essential wget unzip python3 \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Baixa do site oficial e compila a BIBLIOTECA (libswe.so)
-# Nota: Usamos o link oficial ftp/swisseph para garantir a pasta 'swe/src'
-RUN wget https://www.astro.com/ftp/swisseph/swe_unix_src_2.10.03.tar.gz -O /tmp/swe.tar.gz \
-    && tar -xzf /tmp/swe.tar.gz -C /tmp \
+# 2. Baixa do GITHUB (Estável) e compila a libswe.so
+# TRUQUE: --strip-components=1 força os arquivos a irem para /tmp/swe sem criar subpastas com nomes estranhos
+RUN mkdir -p /tmp/swe \
+    && wget https://github.com/aloistr/swisseph/archive/refs/tags/v2.10.03.tar.gz -O /tmp/swe.tar.gz \
+    && tar -xzf /tmp/swe.tar.gz -C /tmp/swe --strip-components=1 \
     && cd /tmp/swe/src \
     && make libswe.so \
     && mkdir -p /usr/local/lib \
