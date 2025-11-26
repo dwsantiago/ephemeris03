@@ -2,9 +2,30 @@ const express = require("express");
 const koffi = require("koffi");
 const GeoTZ = require("geo-tz");
 const moment = require("moment-timezone");
+const morgan = require("morgan");
 
 const app = express();
 app.use(express.json());
+app.use(morgan("dev")); // Logs no console
+
+// --- 0. SEGURANÇA (MIDDLEWARE DE AUTENTICAÇÃO) ---
+const authMiddleware = (req, res, next) => {
+  // A senha pode vir no Header 'x-api-key' OU na URL '?key=senha'
+  const clientKey = req.headers['x-api-key'] || req.query.key;
+  
+  // A senha verdadeira deve estar nas Variáveis de Ambiente do Render
+  // Se não tiver configurada, usa "senha123" como fallback (só para teste)
+  const serverKey = process.env.API_SECRET || "senha123";
+
+  if (!clientKey || clientKey !== serverKey) {
+    return res.status(401).json({ error: "🔒 Acesso negado. Chave de API inválida." });
+  }
+
+  next(); // Pode passar
+};
+
+// Aplica a segurança em TODAS as rotas abaixo
+app.use(authMiddleware);
 
 // --- 1. CARREGAMENTO DA SWISS EPHEMERIS (VIA KOFFI) ---
 const libPath = "/usr/local/lib/libswe.so";
@@ -25,12 +46,11 @@ const PLANETS = {
   11: "North Node", 15: "Chiron"
 };
 
-app.get("/", (req, res) => res.send("API Astrológica Mundial Online 🌍"));
+app.get("/", (req, res) => res.send("API Protegida Online 🔐"));
 
 // --- 2. ROTA INTELIGENTE: /chart ---
 app.get("/chart", (req, res) => {
   try {
-    // Recebemos hora local e coordenadas
     const { year, month, day, hour, lat, lon } = req.query;
 
     if (!year || !month || !day || !hour || !lat || !lon) {
@@ -40,72 +60,52 @@ app.get("/chart", (req, res) => {
     const latNum = parseFloat(lat);
     const lonNum = parseFloat(lon);
     
-    // 1. DESCOBRIR O FUSO HORÁRIO AUTOMATICAMENTE
-    // O geo-tz retorna algo como ['America/Sao_Paulo'] ou ['Europe/Paris']
+    // 1. Fuso Horário
     const timezoneList = GeoTZ.find(latNum, lonNum);
-    const timezoneName = timezoneList[0]; // Pega o primeiro (mais provável)
+    const timezoneName = timezoneList[0]; 
 
-    if (!timezoneName) {
-      throw new Error("Não foi possível determinar o fuso horário para este local.");
-    }
+    if (!timezoneName) throw new Error("Fuso horário não encontrado.");
 
-    // 2. CONVERTER HORA LOCAL -> UTC (Considerando histórico de verão daquele ano)
-    // hour vem decimal (ex: 14.5 para 14:30). Vamos separar.
+    // 2. Hora Local -> UTC
     const hourInt = Math.floor(parseFloat(hour));
     const minuteInt = Math.round((parseFloat(hour) - hourInt) * 60);
 
-    // Cria o objeto data no fuso LOCAL
     const localDate = moment.tz({
       year: parseInt(year),
-      month: parseInt(month) - 1, // Moment usa mês 0-11
+      month: parseInt(month) - 1,
       day: parseInt(day),
       hour: hourInt,
       minute: minuteInt
     }, timezoneName);
 
-    // Converte para UTC
     const utcDate = localDate.clone().utc();
-
-    // Extrai os componentes UTC exatos (o dia pode ter mudado!)
     const yearUTC = utcDate.year();
-    const monthUTC = utcDate.month() + 1; // Volta para 1-12
+    const monthUTC = utcDate.month() + 1;
     const dayUTC = utcDate.date();
     const hourDecimalUTC = utcDate.hour() + (utcDate.minute() / 60.0) + (utcDate.second() / 3600.0);
 
-    // 3. CÁLCULO SUIÇO (AGORA COM UTC PRECISO)
+    // 3. Cálculo Suíço
     const jd = swe_julday(yearUTC, monthUTC, dayUTC, hourDecimalUTC, 1);
-    
-    // Configurações do cálculo
-    const iflag = 256 | 2; // Speed + SwissEph
+    const iflag = 256 | 2; 
     const resultBuffer = new Float64Array(6);
     const errBuffer = Buffer.alloc(256);
     const bodies = {};
 
-    // Loop Planetas
     for (const [id, name] of Object.entries(PLANETS)) {
       swe_calc_ut(jd, parseInt(id), iflag, resultBuffer, errBuffer);
-      bodies[name] = {
-        lon: resultBuffer[0],
-        speed: resultBuffer[3]
-      };
+      bodies[name] = { lon: resultBuffer[0], speed: resultBuffer[3] };
     }
 
-    // Loop Casas (Usa Lat/Lon locais e JD UTC)
     const cusps = new Float64Array(13);
     const ascmc = new Float64Array(10);
-    swe_houses(jd, latNum, lonNum, 80, cusps, ascmc); // 'P' = Placidus
+    swe_houses(jd, latNum, lonNum, 80, cusps, ascmc); 
 
     res.json({
       meta: { 
-        input_local: { date: `${day}/${month}/${year}`, time: hour, lat: latNum, lon: lonNum },
         timezone: timezoneName,
         utc_calculated: { date: `${dayUTC}/${monthUTC}/${yearUTC}`, time: hourDecimalUTC }
       },
-      houses: {
-        Ascendant: ascmc[0],
-        MC: ascmc[1],
-        House_1: cusps[1]
-      },
+      houses: { Ascendant: ascmc[0], MC: ascmc[1], House_1: cusps[1] },
       bodies: bodies
     });
 
@@ -116,4 +116,4 @@ app.get("/chart", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("API rodando"));
+app.listen(PORT, () => console.log("API Segura rodando"));
